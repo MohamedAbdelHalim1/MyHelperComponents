@@ -105,24 +105,21 @@
     const fileInput = document.getElementById('file-input');
     const previewContainer = document.getElementById('image-preview-container');
     const uploadAllBtn = document.getElementById('upload-all-btn');
-    let validFiles = []; // Array to keep track of valid files
+    let uploadedFiles = []; // Store the files to be uploaded
 
     fileInput.addEventListener('change', function() {
-        const files = this.files;
+        const files = Array.from(this.files);
         uploadAllBtn.style.display = files.length > 0 ? 'block' : 'none'; // Show button if files are selected
 
         previewContainer.innerHTML = ''; // Clear previous previews
-        validFiles = []; // Reset valid files array
+        uploadedFiles = []; // Reset uploaded files array
 
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i];
-            validFiles.push(file); // Add to valid files
+        for (let file of files) {
             const reader = new FileReader();
-
             reader.onload = (event) => {
                 addImagePreview(event.target.result, file);
+                uploadedFiles.push(file); // Add to the uploaded files list
             };
-
             reader.readAsDataURL(file);
         }
     });
@@ -142,11 +139,47 @@
         previewContainer.appendChild(div);
     }
 
+    function uploadImage(button, fileName) {
+        const formData = new FormData();
+        const file = uploadedFiles.find(f => f.name === fileName);
+        
+        if (file) {
+            formData.append('file', file);
+            button.innerHTML = 'Uploading...';
+            button.disabled = true;
+
+            fetch('/upload', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.id) {
+                    button.style.display = 'none'; // Hide upload button
+                    const statusText = button.nextElementSibling;
+                    statusText.style.display = 'block'; // Show success text
+                    const deleteBtn = statusText.nextElementSibling;
+                    deleteBtn.style.display = 'block'; // Show delete button
+                    deleteBtn.setAttribute('onclick', `deleteImage(this, ${data.id})`); // Set ID for deletion
+                } else {
+                    alert('Error uploading image');
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                alert('Error uploading image');
+            });
+        }
+    }
+
     function uploadAllImages() {
         const formData = new FormData();
-
-        for (let i = 0; i < validFiles.length; i++) {
-            formData.append('files[]', validFiles[i]);
+        
+        for (let file of uploadedFiles) {
+            formData.append('files[]', file);
         }
 
         fetch('/upload-all', {
@@ -162,7 +195,6 @@
                 alert('All images uploaded successfully');
                 previewContainer.innerHTML = ''; // Clear previews after upload
                 uploadAllBtn.style.display = 'none'; // Hide the upload all button
-                validFiles = []; // Reset valid files
                 window.location.reload();
             } else {
                 alert('Error uploading images');
@@ -174,15 +206,39 @@
         });
     }
 
-    function removePreview(element, fileName) {
-        element.parentElement.remove();
+    function deleteImage(element, id) {
+        if (confirm('Are you sure you want to delete this photo?')) {
+            fetch(`/delete/${id}`, {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert('Image deleted successfully');
+                    removePreview(element, null); // Remove preview from UI
+                } else {
+                    alert('Error deleting image');
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                alert('Error deleting image');
+            });
+        }
+    }
 
-        // Remove the file from validFiles
-        validFiles = validFiles.filter(file => file.name !== fileName);
+    function removePreview(element, fileName) {
+        if (fileName) {
+            uploadedFiles = uploadedFiles.filter(f => f.name !== fileName); // Remove file from the uploaded files array
+        }
+        element.parentElement.remove();
 
         // Check if there are any more previews left
         if (previewContainer.children.length === 0) {
-            uploadAllBtn.style.display = 'none'; // Hide the upload button if no previews left
+            window.location.reload(); // Reload if no images left in the preview
         }
     }
 
