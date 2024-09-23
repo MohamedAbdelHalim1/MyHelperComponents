@@ -30,7 +30,7 @@ class FileUploadController extends Controller
     public function uploadAll(Request $request)
     {
         $request->validate([
-            'files.*' => 'required|image|mimes:jpeg,png,jpg|max:2048',
+            'files.*' => 'required|image|mimes:jpeg,png,jpg',
         ]);
 
         $uploadedPaths = [];
