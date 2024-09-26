@@ -80,7 +80,7 @@
             background-color: #0069d9;
         }
         .remove-btn {
-            color: red;
+            color: #4d4d4d;
             cursor: pointer;
             position: absolute;
             top: 10px;
@@ -98,30 +98,30 @@
 
 <h1>Upload Images</h1>
 <input type="file" id="file-input" accept="image/*" multiple>
-<button class="upload-all-btn" id="upload-all-btn" style="display:none;" onclick="this.innerHTML='Uploading...';">Upload All</button>
+<button class="upload-all-btn" id="upload-all-btn" style="display:none;" onclick="this.innerHTML = 'Uploading...' ;uploadAllImages(this)">Upload All</button>
 <div id="image-preview-container"></div>
 
 <script>
     const fileInput = document.getElementById('file-input');
     const previewContainer = document.getElementById('image-preview-container');
     const uploadAllBtn = document.getElementById('upload-all-btn');
-    let uploadedFiles = []; // Store the files to be uploaded
+    let uploadedFiles = [];  // Store the files to be uploaded
+    let uploadedCount = 0;   // Count of successfully uploaded files
 
     fileInput.addEventListener('change', function() {
         const files = Array.from(this.files);
-        uploadAllBtn.style.display = files.length > 0 ? 'block' : 'none'; // Show button if files are selected
-
+        uploadedFiles = files;
         previewContainer.innerHTML = ''; // Clear previous previews
-        uploadedFiles = []; // Reset uploaded files array
 
         for (let file of files) {
             const reader = new FileReader();
             reader.onload = (event) => {
                 addImagePreview(event.target.result, file);
-                uploadedFiles.push(file); // Add to the uploaded files list
             };
             reader.readAsDataURL(file);
         }
+
+        toggleUploadAllButton();  // Show/Hide the Upload All button based on file selection
     });
 
     function addImagePreview(imageSrc, file) {
@@ -132,7 +132,7 @@
             <div>
                 <button class="upload-btn" onclick="uploadImage(this, '${file.name}')">Upload</button>
                 <span class="status-text" style="display:none;">Uploaded Successfully</span>
-                <button class="delete-btn" style="display:none;" onclick="deleteImage(this, '')">Delete</button>
+                <button class="delete-btn" style="display:none;" onclick="deleteImage(this, '','${file.name}')">Delete</button>
             </div>
             <span class="remove-btn" onclick="removePreview(this, '${file.name}')">x</span>
         `;
@@ -142,7 +142,7 @@
     function uploadImage(button, fileName) {
         const formData = new FormData();
         const file = uploadedFiles.find(f => f.name === fileName);
-        
+
         if (file) {
             formData.append('file', file);
             button.innerHTML = 'Uploading...';
@@ -163,7 +163,10 @@
                     statusText.style.display = 'block'; // Show success text
                     const deleteBtn = statusText.nextElementSibling;
                     deleteBtn.style.display = 'block'; // Show delete button
-                    deleteBtn.setAttribute('onclick', `deleteImage(this, ${data.id})`); // Set ID for deletion
+                    deleteBtn.setAttribute('onclick', `deleteImage(this, ${data.id} , '${file.name}')`); // Set ID for deletion
+
+                    uploadedCount++; // Increment the count of uploaded files
+                    toggleUploadAllButton(); // Hide Upload All button if any photo is uploaded
                 } else {
                     alert('Error uploading image');
                 }
@@ -175,9 +178,51 @@
         }
     }
 
+    function deleteImage(element, id, fileName) {        
+        if (confirm('Are you sure you want to delete this photo?')) {
+            fetch(`/delete/${id}`, {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert('Image deleted successfully');
+                    removePreview(element, fileName);  // Pass the file name for correct removal
+                    uploadedCount--; // Decrement the count of uploaded files
+                    toggleUploadAllButton();  // Re-check for the Upload All button display
+                } else {
+                    alert('Error deleting image');
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                alert('Error deleting image');
+            });
+        }
+    }
+
+
+
+    function removePreview(element, fileName) {        
+        if (fileName) {
+            uploadedFiles = uploadedFiles.filter(f => f.name !== fileName);  // Remove file from the array
+        }
+        element.closest('.image-preview').remove();  // Remove the preview element
+
+        if (previewContainer.children.length === 0) {
+            uploadedFiles = [];  // Reset if no images left
+            uploadedCount = 0;   // Reset uploaded count as well
+        }
+        toggleUploadAllButton();  // Check if Upload All button should be visible
+    }
+
+
+
     function uploadAllImages() {
         const formData = new FormData();
-        
         for (let file of uploadedFiles) {
             formData.append('files[]', file);
         }
@@ -193,8 +238,10 @@
         .then(data => {
             if (data.success) {
                 alert('All images uploaded successfully');
-                previewContainer.innerHTML = ''; // Clear previews after upload
-                uploadAllBtn.style.display = 'none'; // Hide the upload all button
+                previewContainer.innerHTML = '';  // Clear previews after upload
+                uploadedFiles = [];  // Clear the array after all files are uploaded
+                uploadedCount = 0;  // Reset uploaded count
+                toggleUploadAllButton(); // Hide the Upload All button
                 window.location.reload();
             } else {
                 alert('Error uploading images');
@@ -206,43 +253,16 @@
         });
     }
 
-    function deleteImage(element, id) {
-        if (confirm('Are you sure you want to delete this photo?')) {
-            fetch(`/delete/${id}`, {
-                method: 'DELETE',
-                headers: {
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    alert('Image deleted successfully');
-                    removePreview(element, null); // Remove preview from UI
-                } else {
-                    alert('Error deleting image');
-                }
-            })
-            .catch(err => {
-                console.error(err);
-                alert('Error deleting image');
-            });
+
+    function toggleUploadAllButton() {
+        // Show the Upload All button only when there are files left to upload
+        if (uploadedFiles.length > 0 && uploadedCount === 0) {
+            uploadAllBtn.style.display = 'block';
+        } else {
+            uploadAllBtn.style.display = 'none';
         }
     }
 
-    function removePreview(element, fileName) {
-        if (fileName) {
-            uploadedFiles = uploadedFiles.filter(f => f.name !== fileName); // Remove file from the uploaded files array
-        }
-        element.parentElement.remove();
-
-        // Check if there are any more previews left
-        if (previewContainer.children.length === 0) {
-            window.location.reload(); // Reload if no images left in the preview
-        }
-    }
-
-    uploadAllBtn.addEventListener('click', uploadAllImages);
 </script>
 
 </body>
